@@ -2,6 +2,15 @@
 
 **Crie. Personalize. Imprima.**
 
+## Novidades da versão 1.1
+
+- **Preço completo** altera o valor, R$, a vírgula e os centavos em conjunto, respeitando as proporções do cartaz. Use **Restaurar** para voltar ao tamanho original do conjunto.
+- Poppins e Montserrat aparecem na categoria **Clássica**, nos modelos e nos ajustes de cartazes.
+- Em **Templates → Importar arte**, envie um PNG, JPG ou JPEG de página inteira. Para A4, prefira **2480 × 3508 px** em retrato ou **3508 × 2480 px** em paisagem, a 300 DPI. Imagens com outra proporção recebem margens. A arte inteira é preservada e o A4 fica definido ao usar o modelo.
+- A prévia permite reservar espaço para o cabeçalho da sua arte e escolher se a validade e a loja aparecem no rodapé. Arquivos maiores que 2 MB são otimizados para armazenamento quando possível.
+- Foram adicionados sete modelos com cabeçalhos originais de Ano Novo, Ofertas da Semana, São João, Férias, Volta às Aulas, Natal e Páscoa.
+
+
 Para implantar na Netlify com Supabase Auth, PostgreSQL e Storage, siga [PUBLICAR.md](PUBLICAR.md). As instruções de instalação abaixo usam SQLite no Windows.
 
 Estúdio de ofertas em português para importar produtos, criar cartazes em lote, ajustar cada arte e exportar para impressão ou mídias digitais. O painel começa com o catálogo vazio. Os cartazes exibidos na biblioteca são amostras dos modelos.
@@ -29,7 +38,7 @@ npm.cmd run admin -- --reset
 
 1. Cadastre produtos ou envie uma planilha XLS, XLSX ou CSV. Confira a associação de colunas e a prévia. Para preservar zeros à esquerda no Excel, grave a coluna de EAN como texto ou aplique uma máscara numérica com os zeros desejados.
 2. Escolha a loja, os produtos, o modelo, a dinâmica e o formato em **Criar cartazes**. Você também pode iniciar pelo botão de uma importação, que já seleciona seus produtos.
-3. Gere as prévias. Use **A−** e **A+** ou digite o tamanho para ajustar um campo. A galeria oferece seleção, estilos em lote, opções de splash e edição ampliada por cartaz. O ícone de alerta indica estouro de texto.
+3. Gere as prévias. Use **A−** e **A+** ou digite o tamanho para ajustar um campo. O controle **Preço completo** dimensiona o conjunto proporcionalmente. A galeria oferece seleção, estilos em lote, opções de splash e edição ampliada por cartaz. O ícone de alerta indica estouro de texto.
 4. Clique em **Salvar ajustes** para persistir as mudanças no banco. A galeria guarda um rascunho por aba para facilitar a recuperação da edição antes do salvamento.
 5. Exporte um arquivo individual ou o lote. Um PDF reúne as páginas nas dimensões físicas do formato. PNG e JPEG com várias páginas são empacotados em ZIP. Use **PDFs em ZIP** para obter arquivos PDF separados. Nos PDFs de cartazes as fontes locais são incorporadas quando compatíveis. Selecione 300 DPI para dimensões em milímetros ou centímetros quando necessário. Nos formatos digitais, são preservadas as dimensões em pixels.
 6. **Imprimir** abre a prévia em PDF. Escolha a folha, o número de artes por folha, as cópias, as margens e as marcas de corte. Use a opção de impressão no visualizador e escolha tamanho real quando a arte exigir as medidas exatas. A solicitação aparece no histórico.

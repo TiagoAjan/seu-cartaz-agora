@@ -1,5 +1,14 @@
 # Planejamento do SEU CARTAZ AGORA
 
+## Atualização 1.1
+
+- Um controle proporcional para todos os componentes do preço principal.
+- Duas novas fontes clássicas e sete modelos temáticos.
+- Importação de artes em PNG/JPG/JPEG com prévia, orientação, guia de impressão em A4 e preservação das proporções.
+- A publicação atualiza os arquivos do projeto. A configuração do Supabase e as variáveis da Netlify são reutilizadas.
+
+- Verificação da versão 1.1: 17 testes automatizados, compilação de produção, sete temas no Chrome, importação PNG/JPG/JPEG, preço proporcional, reabertura e exportação A4. A integração de nuvem foi verificada com PostgreSQL local e endpoints simulados.
+
 ## Fase 1 — Núcleo local
 
 Implementada e validada no Windows.
@@ -10,9 +19,9 @@ Implementada e validada no Windows.
 | Empresas e lojas | Uma empresa por conta administradora, filiais, sessão e banco particionados por empresa. |
 | Catálogo | Cadastro, busca, paginação, edição, duplicação, exclusão e seleção em lote. Oferta e catálogo separados, com preços exatos em centavos. |
 | Importações | XLS, XLSX e CSV. Prévia, mapeamento, padrões salvos, confirmação de mudança nos preços, erros e reversão condicionada à ausência de edições posteriores. |
-| Produção | Oito modelos iniciais, formatos físicos e digitais, tamanho personalizado, sete dinâmicas e processamento em blocos. |
+| Produção | Oito modelos iniciais e sete sazonais, formatos físicos e digitais, tamanho personalizado, sete dinâmicas e processamento em blocos. |
 | Galeria | Grade e lista, zoom, edição por cartaz, tamanhos A− e A+ com repetição, entrada numérica, restauração, cópia de estilo, splashes e aplicação em lote. |
-| Fontes e splash | Sete fontes abertas locais, seletor com amostras e favoritos, seis formas vetoriais originais. |
+| Fontes e splash | Nove fontes abertas locais, seletor com amostras e favoritos, seis formas vetoriais originais. |
 | Arquivos | PDF único, PDFs em ZIP, PNG e JPEG, DPI configurável para formatos físicos e fontes incorporadas aos cartazes em PDF quando compatíveis. |
 | Histórico | Snapshots de produtos e preços, reabertura, duplicação, exportações, solicitações de impressão e rascunhos de edição. |
 
@@ -20,7 +29,7 @@ Implementada e validada no Windows.
 
 - Já disponível: editor de cores, título, fontes e foto, com prévia e versão do modelo. A edição de cartazes também ajusta posição, escala, rotação, cor e opacidade do splash.
 - Já disponível: impressão via PDF com escolha da folha, orientação, quantidade de artes por folha, cópias, margem, espaçamento e marcas de corte.
-- Pendente: editor livre com campos dinâmicos, drag and drop, camadas, arte de fundo, guias, histórico de versões, presets hierárquicos, fontes próprias, importação sanitizada de SVG, biblioteca completa de splashes e sangria.
+- Pendente: editor livre com campos dinâmicos, drag and drop, camadas, guias, histórico de versões, presets hierárquicos, fontes próprias, importação sanitizada de SVG, biblioteca completa de splashes e sangria.
 
 ## Fase 3 — Encartes, imagens e campanhas
 

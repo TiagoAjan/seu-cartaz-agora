@@ -1,5 +1,14 @@
 # Publicar o SEU CARTAZ AGORA na Netlify
 
+## Atualizar um site já publicado para a versão 1.1
+
+1. Extraia o ZIP da versão 1.1 e abra o repositório GitHub que já está conectado à Netlify.
+2. Clique em **Add file → Upload files**. Envie o conteúdo extraído para a raiz, onde já estão `package.json` e `netlify.toml`. A página de upload substitui os arquivos que têm o mesmo caminho.
+3. Clique em **Commit changes** na branch que a Netlify acompanha, normalmente `main`. Aguarde o novo deploy aparecer como **Published**.
+4. Abra seu endereço habitual. Em **Templates** deve aparecer **Importar arte**. Seu usuário, produtos, campanhas, lotes e as variáveis da Netlify continuam no mesmo projeto. A atualização usa a migração e o bucket que já foram configurados para a primeira versão.
+
+## Instalação nova
+
 Você precisa de um projeto no Supabase e de um repositório Git que possa conectar à Netlify. O ZIP contém o código-fonte completo. Extraia e coloque o **conteúdo da pasta do projeto** na raiz do repositório, onde estão `package.json` e `netlify.toml`.
 
 ## 1. Preparar o Supabase
