@@ -3,7 +3,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowDownToLine, CheckCircle2, Copy, FileSpreadsheet, Files, Grid2X2, List, Pencil, Plus, Printer, RotateCcw, Save, Sparkles, Trash2, X } from 'lucide-react';
 import { Button, CanvasPreview, Check, Empty, Field, IconButton, Modal, PageHeading, Select } from './ui';
 import { ProductPicker, storeOptions } from './catalog';
-import { builtins, dimensions, dynamics, effectiveStyle, event, fonts, formats, id, now, parseDate, patchPoster, posterFromProduct, pricePieces, primaryPrice, resizePrice, sizeLabels, sizes, splashes, visibleOffer } from '@/lib/model.mjs';
+import { builtins, dimensions, dynamics, effectiveStyle, event, fonts, formats, id, now, parseDate, patchPoster, posterFromProduct, brushSplash, maxPriceSize, pricePieces, primaryPrice, resizePrice, scalePoster, sizeLabels, sizes, splashes, visibleOffer } from '@/lib/model.mjs';
 import { download, nextFrame, renderExports, splitPages } from '@/lib/graphic.mjs';
 import {templateFormat} from '@/lib/template-art.mjs';
 import { composePrint, defaultPrint, printGeometry } from '@/lib/printing.mjs';
@@ -86,7 +86,7 @@ export function Generator({kind,data,commit,requireAccount,notify,go,selection,s
       <Field label="Modelo de splash"><Select options={splashes} value={cfg.shape} onChange={shape=>patch({shape})}/></Field>
     </div>
     {template.artwork&&<p className="artworkHint">Este modelo mantém o A4 na orientação definida em Templates. A imagem inteira aparece na exportação.</p>}
-    <div className="groupChecks inlineChecks"><Check checked={cfg.splashPrice} onChange={e=>patch({splashPrice:e.target.checked})}>Splash atrás do preço</Check><Check checked={cfg.splashDesc} onChange={e=>patch({splashDesc:e.target.checked})}>Splash atrás da descrição</Check><input type="color" aria-label="Cor do splash" value={cfg.color} onChange={e=>patch({color:e.target.value})}/></div>
+    <div className="groupChecks inlineChecks"><Check checked={cfg.splashPrice} onChange={e=>patch({splashPrice:e.target.checked})}>Splash atrás do preço</Check><Check checked={cfg.splashDesc} onChange={e=>patch({splashDesc:e.target.checked})}>Splash atrás da descrição</Check><input type="color" aria-label="Cor do splash" disabled={cfg.shape===brushSplash} value={cfg.color} onChange={e=>patch({color:e.target.value})}/></div>
   </section>
   <section className="panel tablePanel module-section"><div className="section-heading padded"><div><h2>Selecionar produtos</h2><p>Selecione produtos do catálogo ou filtre por uma importação.</p></div>{!data.products.length&&<Button icon={Plus} onClick={()=>go('products')}>Abrir catálogo</Button>}</div>
     <ProductPicker data={data} selected={selected} setSelected={setSelected} batch={importId} setBatch={chooseImport} store={cfg.store}/>
@@ -98,7 +98,9 @@ export function Generator({kind,data,commit,requireAccount,notify,go,selection,s
     </div>
   </section></>;
 }
-function Stepper({label,value,onChange,onReset}) {
+function Stepper({label,value,onChange,onReset,min=8,max=300}) {
+  const [typed,setTyped]=useState(null);
+  const clamp=n=>Math.max(min,Math.min(max,n));
   const timeout=useRef();
   const repeat=useRef();
   const current=useRef(value);
@@ -108,17 +110,82 @@ function Stepper({label,value,onChange,onReset}) {
   function press(e,delta) {
     if(e.button!==0)return;
     e.currentTarget.setPointerCapture(e.pointerId);
-    const bump=()=>{const next=Math.max(8,Math.min(300,current.current+delta));current.current=next;onChange(next);};
+    const bump=()=>{const next=clamp(current.current+delta);current.current=next;onChange(next);};
     bump();
     timeout.current=setTimeout(()=>{repeat.current=setInterval(bump,90);},340);
   }
   return <div className="stepper"><span>{label}</span><div>
-    {[-2,2].map((delta,index)=><button type="button" key={delta} className={index?'stepUp':'stepDown'} aria-label={(delta>0?'Aumentar ':'Diminuir ')+label} onPointerDown={e=>press(e,delta)} onPointerUp={end} onLostPointerCapture={end} onPointerCancel={end} onClick={e=>{if(e.detail===0)onChange(value+delta);}}>A{delta>0?'+':'−'}</button>)}
-    <input type="number" min="8" max="300" aria-label={'Tamanho de '+label} value={value} onChange={e=>{if(e.target.value!=='')onChange(Number(e.target.value));}}/>
+    {[-2,2].map((delta,index)=><button type="button" key={delta} className={index?'stepUp':'stepDown'} aria-label={(delta>0?'Aumentar ':'Diminuir ')+label} onPointerDown={e=>press(e,delta)} onPointerUp={end} onLostPointerCapture={end} onPointerCancel={end} onClick={e=>{if(e.detail===0)onChange(clamp(value+delta));}}>A{delta>0?'+':'−'}</button>)}
+    <input type="number" min={min} max={max} aria-label={'Tamanho de '+label} value={typed??value}
+      onChange={e=>{const raw=e.target.value;setTyped(raw);const n=Number(raw);if(raw&&Number.isFinite(n)&&n>=min&&n<=max)onChange(n);}}
+      onBlur={()=>{if(typed&&Number.isFinite(Number(typed)))onChange(clamp(Number(typed)));setTyped(null);}}
+      onKeyDown={e=>{if(e.key==='Enter'){e.preventDefault();e.currentTarget.blur();}}}/>
     <button type="button" className="stepReset" title={'Restaurar '+label} aria-label={'Restaurar '+label} onClick={onReset}><RotateCcw size={13}/></button>
   </div></div>;
 }
 const basic=['description','price','unit'];
+const scaleGroups=[
+  ['Preço',['price']],['Descrição',['description']],['Splash',['splash']],['Tudo',['price','description','splash']]
+];
+const positionLabels={price:'Valor',currency:'Símbolo R$',cents:'Centavos'};
+const normalizeOffset=n=>Math.max(-1,Math.min(1,Math.round(n*10000)/10000));
+
+function PosterPositionEditor({poster,config,onPosition}) {
+  const [regions,setRegions]=useState({});
+  const [draft,setDraft]=useState(null);
+  const drag=useRef(null);
+  const offsets=useMemo(()=>effectiveStyle(poster).priceOffsets,[poster]);
+  const preview=useMemo(()=>draft?{...poster,overrides:{...poster.overrides,priceOffsets:{...offsets,[draft.key]:draft.value}}}:poster,
+    [draft,offsets,poster]);
+  function pointerStart(e,key,region) {
+    if(e.button!==0)return;
+    e.currentTarget.setPointerCapture(e.pointerId);
+    const frame=e.currentTarget.parentElement.getBoundingClientRect();
+    drag.current={key,id:e.pointerId,x:e.clientX,y:e.clientY,
+      width:frame.width*region.frameWidth,height:frame.height*region.frameHeight,base:offsets[key]||{x:0,y:0}};
+  }
+  function move(e) {
+    const job=drag.current;
+    if(!job||job.id!==e.pointerId)return;
+    job.value={x:normalizeOffset(job.base.x+(e.clientX-job.x)/job.width),
+      y:normalizeOffset(job.base.y+(e.clientY-job.y)/job.height)};
+    setDraft({key:job.key,value:job.value});
+  }
+  function finish(e,cancelled=false) {
+    const job=drag.current;
+    if(!job||job.id!==e.pointerId)return;
+    drag.current=null;
+    if(job.value&&!cancelled)onPosition(job.key,job.value);
+    setDraft(null);
+  }
+  function moveByKey(e,key) {
+    const axis={ArrowLeft:[-1,0],ArrowRight:[1,0],ArrowUp:[0,-1],ArrowDown:[0,1]}[e.key];
+    if(!axis)return;
+    e.preventDefault();
+    const amount=e.shiftKey?.04:.01;
+    const current=offsets[key]||{x:0,y:0};
+    onPosition(key,{x:normalizeOffset(current.x+axis[0]*amount),y:normalizeOffset(current.y+axis[1]*amount)});
+  }
+  const hasOffsets=Object.values(offsets).some(value=>value.x||value.y);
+  return <div className="positionEditor">
+    <CanvasPreview poster={preview} config={config} onPriceRegions={setRegions}>
+      <div className="priceHandles">
+        {Object.entries(regions).map(([key,rect])=>{
+          const left=Math.max(0,Math.min(.96,rect.left-.008));
+          const top=Math.max(0,Math.min(.96,rect.top-.008));
+          const width=Math.max(.04,Math.min(1,rect.right+.008)-left);
+          const height=Math.max(.04,Math.min(1,rect.bottom+.008)-top);
+          return <button key={key} type="button" className="priceHandle" aria-label={'Mover '+positionLabels[key]} title={'Arraste para mover '+positionLabels[key]}
+            style={{left:left*100+'%',top:top*100+'%',width:width*100+'%',height:height*100+'%'}}
+            onPointerDown={e=>pointerStart(e,key,rect)} onPointerMove={move} onPointerUp={finish}
+            onPointerCancel={e=>finish(e,true)} onLostPointerCapture={e=>finish(e,true)} onKeyDown={e=>moveByKey(e,key)}/>;
+        })}
+      </div>
+    </CanvasPreview>
+    <p className="artworkHint">Arraste o R$, o valor ou os centavos na prévia. Você também pode usar as setas do teclado.</p>
+    {hasOffsets&&<Button icon={RotateCcw} onClick={()=>onPosition()}>Restaurar posições</Button>}
+  </div>;
+}
 const advancedSizes=Object.keys(sizes).filter(key=>key==='price'||!pricePieces.includes(key));
 const fontOptions=fonts.map(f=>f.name);
 export function Gallery({batch,data,commit,notify,onBatch,dirty,storeDraft,go}) {
@@ -129,6 +196,10 @@ export function Gallery({batch,data,commit,notify,onBatch,dirty,storeDraft,go}) 
   const [max,setMax]=useState(36);
   const [bulk,setBulk]=useState({scope:'Todos',keep:true, descFont:'Bangers',priceFont:'Anton',splashPrice:true,splashDesc:false,shape:splashes[0],color:'#ffad24'});
   const [exporter,setExporter]=useState(null);
+  const [exportError,setExportError]=useState('');
+  const [printPreview,setPrintPreview]=useState(null);
+  const printUrl=printPreview?.url;
+  useEffect(()=>()=>{if(printUrl)setTimeout(()=>URL.revokeObjectURL(printUrl),10000);},[printUrl]);
   const [mode,setMode]=useState('PDF');
   const [printOptions,setPrintOptions]=useState(defaultPrint);
   const [resolution,setResolution]=useState('150');
@@ -170,6 +241,18 @@ export function Gallery({batch,data,commit,notify,onBatch,dirty,storeDraft,go}) 
     else apply(targets,patch,true);
     notify('Configuração aplicada a '+targets.size+' cartaz(es).');
   }
+  function scaleBatch(label,fields,factor) {
+    const targets=ids();
+    if(!targets.size){notify('Selecione pelo menos um cartaz.',true);return;}
+    change(items=>items.map(item=>targets.has(item.id)?scalePoster(item,fields,factor):item));
+    notify(label+' · tamanho ajustado em '+targets.size+' cartaz(es).');
+  }
+  function movePrice(item,key,offset) {
+    const current=batchRef.current.items.find(p=>p.id===item.id);
+    const original=effectiveStyle(current).priceOffsets;
+    const priceOffsets=key?{...original,[key]:offset}:Object.fromEntries(Object.keys(original).map(name=>[name,{x:0,y:0}]));
+    individual(item,{priceOffsets});
+  }
   function toggle(id,checked){const next=new Set(selected);if(checked)next.add(id);else next.delete(id);setSelected(next);}
   async function save(withEvent) {
     const latest=batchRef.current;
@@ -179,14 +262,12 @@ export function Gallery({batch,data,commit,notify,onBatch,dirty,storeDraft,go}) 
   }
   async function startExport(options) {
     const {items:chosen,print,label}=options;
-    if(print&&!imposed){notify('Confira as margens e a configuração da folha.',true);return;}
-    if(!chosen.length){notify('Selecione cartazes para continuar.',true);return;}
+    setExportError('');
+    if(print&&!imposed){setExportError('Confira as margens e a configuração da folha.');return;}
+    if(!chosen.length){setExportError('Selecione cartazes para continuar.');return;}
     const progress={cancelled:false};
     cancel.current=progress;
     setWorking({done:0,total:chosen.length});
-    const printing=print?window.open('about:blank','_blank'):null;
-    if(print&&!printing){setWorking(null);notify('Permita pop-ups para abrir a prévia de impressão.',true);return;}
-    if(printing){printing.opener=null;printing.document.title='Preparando impressão';printing.document.body.textContent='Preparando a prévia de impressão…';}
     try {
       const onProgress=(done,total)=>setWorking({done,total});
       const original=printOptions.sheet==='Formato do lote'&&Number(printOptions.perSheet)===1&&!Number(printOptions.margin)&&Number(printOptions.copies)===1&&!printOptions.marks;
@@ -194,27 +275,33 @@ export function Gallery({batch,data,commit,notify,onBatch,dirty,storeDraft,go}) 
         await composePrint(chosen,config,printOptions,Number(resolution),onProgress,progress) :
         await renderExports(chosen,config,print?'PDF':mode,Number(resolution),onProgress,progress);
       if(progress.cancelled)throw Error('Exportação cancelada.');
-      if(printing) {
-        const url=URL.createObjectURL(outcome.blob);
-        printing.location.href=url;
-        setTimeout(()=>URL.revokeObjectURL(url),5*60*1000);
-        notify(outcome.warnings?'Prévia aberta. '+outcome.warnings+' arte(s) têm aviso de ajuste de texto.':'PDF de impressão aberto. Use o botão Imprimir do visualizador.',!!outcome.warnings);
+      const filename=batch.name.replace(/[<>:"/\\|?*]/g,'-')+'.'+outcome.extension;
+      if(print) {
+        setPrintPreview({url:URL.createObjectURL(outcome.blob),filename,warnings:outcome.warnings});
       } else {
-        download(outcome.blob,batch.name.replace(/[<>:"/\\|?*]/g,'-')+'.'+outcome.extension);
-        notify(outcome.warnings?'Arquivo exportado. '+outcome.warnings+' página(s) têm aviso de ajuste de texto.':'Arquivo exportado.',!!outcome.warnings);
+        download(outcome.blob,filename);
+        notify(outcome.warnings?'Arquivo exportado. '+outcome.warnings+' página(s) têm avisos na galeria.':'Arquivo exportado.',!!outcome.warnings);
+        setExporter(null);
       }
       await save(event(print?'Impressão solicitada':'Exportação realizada',batch.name+' · '+label,config.store));
-      setExporter(null);
-    } catch(e){if(printing)printing.close();notify(e.message,true);}
+    } catch(error){setExportError(progress.cancelled?'Operação cancelada.':(error.message||'Não foi possível preparar o arquivo.'));}
     finally{setWorking(null);cancel.current=null;}
   }
-  const openExport=(chosen,print=false)=>{setMode('PDF');if(print)setPrintOptions(defaultPrint());setExporter({items:chosen,print,label:chosen.length+' produto(s)'});};
+  function closeExport() {
+    if(working)return;
+    setExporter(null);setPrintPreview(null);setExportError('');
+  }
+  function openExport(chosen,print=false) {
+    setMode('PDF');setExportError('');setPrintPreview(null);
+    if(print)setPrintOptions(defaultPrint());
+    setExporter({items:chosen,print,label:chosen.length+' produto(s)'});
+  }
   function editSize(item,key,value) {
     if(!Number.isFinite(value))return;
     if(key==='price'){
       const current=batchRef.current.items.find(p=>p.id===item.id);
       individual(item,{sizes:resizePrice(effectiveStyle(current).sizes,value)});
-    } else individual(item,{sizes:{[key]:Math.max(8,Math.min(300,value))}});
+    } else individual(item,{sizes:{[key]:Math.max(key==='description'?14:8,Math.min(300,value))}});
   }
   return <><PageHeading title={batch.name} subtitle={items.length+' '+(items.length===1?'oferta':'ofertas')+' · '+config.format+(dirty?' · Alterações pendentes':' · Lote salvo')}>
     <Button icon={Save} disabled={!dirty} onClick={async()=>{if(await save())notify('Ajustes do lote salvos.');}}>Salvar ajustes</Button>
@@ -230,8 +317,16 @@ export function Gallery({batch,data,commit,notify,onBatch,dirty,storeDraft,go}) 
       <Field label="Fonte do preço"><Select value={bulk.priceFont} options={fontOptions} onChange={priceFont=>setBulk({...bulk,priceFont})}/></Field>
       <Field label="Splash"><Select value={bulk.shape} options={splashes} onChange={shape=>setBulk({...bulk,shape})}/></Field>
     </div>
-    <div className="groupChecks inlineChecks"><Check checked={bulk.splashPrice} onChange={e=>setBulk({...bulk,splashPrice:e.target.checked})}>Atrás do preço</Check><Check checked={bulk.splashDesc} onChange={e=>setBulk({...bulk,splashDesc:e.target.checked})}>Atrás da descrição</Check><Check checked={bulk.keep} onChange={e=>setBulk({...bulk,keep:e.target.checked})}>Preservar ajustes individuais</Check><input type="color" value={bulk.color} aria-label="Cor do splash em lote" onChange={e=>setBulk({...bulk,color:e.target.value})}/></div>
+    <div className="groupChecks inlineChecks"><Check checked={bulk.splashPrice} onChange={e=>setBulk({...bulk,splashPrice:e.target.checked})}>Atrás do preço</Check><Check checked={bulk.splashDesc} onChange={e=>setBulk({...bulk,splashDesc:e.target.checked})}>Atrás da descrição</Check><Check checked={bulk.keep} onChange={e=>setBulk({...bulk,keep:e.target.checked})}>Preservar ajustes individuais</Check><input type="color" value={bulk.color} aria-label="Cor do splash em lote" disabled={bulk.shape===brushSplash} onChange={e=>setBulk({...bulk,color:e.target.value})}/></div>
     <div className="actions"><Button onClick={()=>applying({descFont:bulk.descFont,priceFont:bulk.priceFont})}>Aplicar fontes</Button><Button icon={Sparkles} onClick={()=>applying({splashPrice:bulk.splashPrice,splashDesc:bulk.splashDesc,shape:bulk.shape,color:bulk.color})}>Aplicar splash</Button><Button onClick={()=>applying({splashPrice:false,splashDesc:false})}>Remover splash</Button><Button icon={RotateCcw} onClick={()=>applying({splashPrice:config.splashPrice,splashDesc:config.splashDesc,shape:config.shape,color:config.color})}>Restaurar splash do lote</Button></div>
+    <div className="batchScale">
+      <strong>Tamanho em lote</strong>
+      <div className="batchScaleGrid">{scaleGroups.map(([label,fields])=><div className="batchScaleControl" key={label}>
+        <span>{label}</span>
+        <Button aria-label={'Diminuir '+label+' em 10% no lote'} onClick={()=>scaleBatch(label,fields,.9)}>−10%</Button>
+        <Button aria-label={'Aumentar '+label+' em 10% no lote'} onClick={()=>scaleBatch(label,fields,1.1)}>+10%</Button>
+      </div>)}</div>
+    </div>
   </section>
   <div className="galleryToolbar">
     <Check checked={all} onChange={e=>setSelected(e.target.checked?new Set(items.map(p=>p.id)):new Set())}>Selecionar todos</Check><span className="countLabel">{selectedItems.length} selecionados</span>
@@ -247,7 +342,7 @@ export function Gallery({batch,data,commit,notify,onBatch,dirty,storeDraft,go}) 
         </div></div>
         <CanvasPreview poster={item} config={config}/>
         <div className="cardControls"><strong title={item.product.name}>{item.product.commercial||item.product.name}</strong>
-          <div className="typeControls">{basic.map(key=><Stepper key={key} label={sizeLabels[key]} value={style.sizes[key]} onChange={value=>editSize(item,key,value)} onReset={()=>resetSize(item,key)}/>)}</div>
+          <div className="typeControls">{basic.map(key=><Stepper key={key} label={sizeLabels[key]} min={key==='description'?14:8} max={key==='price'?maxPriceSize:300} value={style.sizes[key]} onChange={value=>editSize(item,key,value)} onReset={()=>resetSize(item,key)}/>)}</div>
           <div className="groupChecks"><Check checked={!!style.splashPrice} onChange={e=>individual(item,{splashPrice:e.target.checked})}>Splash do preço</Check><Check checked={!!style.splashDesc} onChange={e=>individual(item,{splashDesc:e.target.checked})}>Splash da descrição</Check></div>
           <div className="actions cardBottom"><IconButton icon={RotateCcw} label="Restaurar padrão do cartaz" onClick={()=>restore(item)}/><Button onClick={()=>{setClip({...style,sizes:{...style.sizes}});notify('Estilo copiado.');}}>Copiar estilo</Button><Button disabled={!clip} onClick={()=>individual(item,clip)}>Colar</Button><IconButton icon={Copy} label="Duplicar cartaz" onClick={()=>change(items=>[...items,{...structuredClone(item),id:id()}])}/><IconButton icon={Trash2} label="Excluir cartaz" disabled={items.length===1} onClick={()=>{if(window.confirm('Excluir este cartaz do lote?'))change(items=>items.filter(p=>p.id!==item.id));}}/></div>
         </div>
@@ -256,17 +351,28 @@ export function Gallery({batch,data,commit,notify,onBatch,dirty,storeDraft,go}) 
   </section>
   {items.length>max&&<div className="loadMore"><Button onClick={()=>setMax(max+36)}>Ver mais {Math.min(36,items.length-max)} cartazes</Button><small>{max} de {items.length}</small></div>}
   {current&&<Modal wide title="Ajustes do cartaz" onClose={()=>setEditing('')}>
-    <div className="advancedPoster"><CanvasPreview poster={current} config={config}/><div>
+    <div className="advancedPoster"><PosterPositionEditor poster={current} config={config} onPosition={(key,offset)=>movePrice(current,key,offset)}/><div>
       <div className="formGrid two"><Field label="Fonte da descrição"><Select value={effectiveStyle(current).descFont} onChange={descFont=>individual(current,{descFont})} options={fontOptions}/></Field><Field label="Fonte do preço"><Select value={effectiveStyle(current).priceFont} onChange={priceFont=>individual(current,{priceFont})} options={fontOptions}/></Field></div>
       <p className="artworkHint">Preço completo ajusta R$, valor, vírgula e centavos na mesma proporção.</p>
-      <div className="typeControls">{advancedSizes.map(key=><Stepper key={key} label={sizeLabels[key]} value={effectiveStyle(current).sizes[key]} onChange={value=>editSize(current,key,value)} onReset={()=>resetSize(current,key)}/>)}</div>
+      <div className="typeControls">{advancedSizes.map(key=><Stepper key={key} label={sizeLabels[key]} min={key==='description'?14:8} max={key==='price'?maxPriceSize:300} value={effectiveStyle(current).sizes[key]} onChange={value=>editSize(current,key,value)} onReset={()=>resetSize(current,key)}/>)}</div>
       <div className="formGrid two"><Field label="Modelo de splash"><Select value={effectiveStyle(current).shape} onChange={shape=>individual(current,{shape})} options={splashes}/></Field>
-      <Field label="Cor do splash"><input type="color" value={effectiveStyle(current).color} onChange={e=>individual(current,{color:e.target.value})}/></Field>
-      {[['scale','Escala',.25,2,.05],['opacity','Opacidade',0,1,.05],['x','Posição horizontal',-300,300,1],['y','Posição vertical',-300,300,1],['rotation','Rotação',-180,180,1]].map(([key,label,min,max,step])=><Field key={key} label={label}><input type="range" min={min} max={max} step={step} value={effectiveStyle(current)[key]} onChange={e=>individual(current,{[key]:Number(e.target.value)})}/></Field>)}</div>
+      <Field label="Cor do splash"><input type="color" disabled={effectiveStyle(current).shape===brushSplash} value={effectiveStyle(current).color} onChange={e=>individual(current,{color:e.target.value})}/></Field>
+      {[['scale','Escala',.25,4,.01],['opacity','Opacidade',0,1,.05],['x','Posição horizontal',-300,300,1],['y','Posição vertical',-300,300,1],['rotation','Rotação',-180,180,1]].map(([key,label,min,max,step])=><Field key={key} label={label}><input type="range" min={min} max={max} step={step} value={effectiveStyle(current)[key]} onChange={e=>individual(current,{[key]:Number(e.target.value)})}/></Field>)}</div>
       <div className="groupChecks"><Check checked={effectiveStyle(current).auto} onChange={e=>individual(current,{auto:e.target.checked})}>Ajustar texto automaticamente</Check><Check checked={!!effectiveStyle(current).splashPrice} onChange={e=>individual(current,{splashPrice:e.target.checked})}>Splash do preço</Check><Check checked={!!effectiveStyle(current).splashDesc} onChange={e=>individual(current,{splashDesc:e.target.checked})}>Splash da descrição</Check></div>
     </div></div><div className="modalActions"><Button icon={RotateCcw} onClick={()=>restore(current)}>Restaurar padrão</Button><Button variant="primary" onClick={()=>setEditing('')}>Concluir</Button></div>
   </Modal>}
-  {exporter&&<Modal title={exporter.print?'Preparar impressão':'Exportar arquivos'} onClose={()=>{if(!working)setExporter(null);}}>
+  {exporter&&<Modal wide={!!printPreview} title={printPreview?'Prévia de impressão':exporter.print?'Preparar impressão':'Exportar arquivos'} onClose={closeExport}>
+    {printPreview?<div className="printPreview">
+      <p className="muted">Use o ícone de impressora da prévia ou abra o PDF no visualizador do navegador.</p>
+      {printPreview.warnings>0&&<p className="printNotice" role="status">{printPreview.warnings} arte(s) têm avisos na galeria. Confira a prévia antes de imprimir.</p>}
+      <div className="actions printLinks">
+        <a className="btn primary" href={printPreview.url} target="_blank" rel="noopener"><Printer size={17}/> Abrir PDF para imprimir</a>
+        <a className="btn" href={printPreview.url} download={printPreview.filename}><ArrowDownToLine size={17}/> Baixar PDF</a>
+        <Button onClick={()=>setPrintPreview(null)}>Voltar aos ajustes</Button>
+      </div>
+      <iframe title="Visualização do PDF de impressão" src={printPreview.url}/>
+    </div>:<>
+    {exportError&&<p className="inlineError" role="alert">{exportError}</p>}
     <p className="muted">{exporter.label} · {splitPages(exporter.items,config).length} página(s) · {config.width} × {config.height} {config.unit}</p>
     <div className="formGrid two">
       {!exporter.print&&<Field label="Arquivo"><Select value={mode} onChange={setMode} disabled={!!working} options={['PDF','PNG','JPEG','PNG em ZIP','PDFs em ZIP']}/></Field>}
@@ -282,7 +388,8 @@ export function Gallery({batch,data,commit,notify,onBatch,dirty,storeDraft,go}) 
       {imposed?<p className="muted">{Math.ceil(splitPages(exporter.items,config).length*imposed.copies/imposed.perSheet)} folha(s) · {imposed.sheetW.toFixed(1)} × {imposed.sheetH.toFixed(1)} mm</p>:<p className="inlineError">Ajuste o tamanho da folha, as margens ou o espaçamento.</p>}
     </>}
     {working&&<div className="progress"><progress value={working.done} max={working.total}/><span>{working.done} / {working.total}</span></div>}
-    <div className="modalActions"><Button onClick={()=>working?cancel.current.cancelled=true:setExporter(null)}>Cancelar</Button><Button icon={exporter.print?Printer:ArrowDownToLine} variant="primary" disabled={!!working||exporter.print&&!imposed} onClick={()=>startExport(exporter)}>{working?'Preparando…':exporter.print?'Abrir prévia':'Baixar arquivo'}</Button></div>
+    <div className="modalActions"><Button onClick={()=>working?cancel.current.cancelled=true:closeExport()}>Cancelar</Button><Button icon={exporter.print?Printer:ArrowDownToLine} variant="primary" disabled={!!working||exporter.print&&!imposed} onClick={()=>startExport(exporter)}>{working?'Preparando…':exporter.print?'Abrir prévia':'Baixar arquivo'}</Button></div>
+    </>}
   </Modal>}
   </>;
 }

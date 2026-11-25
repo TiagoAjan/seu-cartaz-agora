@@ -249,6 +249,24 @@ td small{display:block;color:var(--muted)}
 .artworkInfo{display:flex;align-items:flex-start;justify-content:space-between;gap:8px 12px;flex-wrap:wrap;padding:12px;background:var(--subtle);border:1px solid var(--line);border-radius:9px;margin-bottom:13px;font-size:.88rem}
 .artworkInfo p,.artworkHint{color:var(--muted);font-size:.84rem;margin-top:5px}
 .artworkInfo p.artworkDetail{flex-basis:100%}
+.previewProblem{position:absolute;inset:auto 5px 5px;display:flex;align-items:flex-start;gap:7px;padding:9px;border-radius:8px;background:#fff4da;color:#603800;text-align:left;font-size:.78rem;overflow:auto;max-height:85%}
+.previewProblem>div{min-width:0}
+.previewProblem p{margin:3px 0;overflow-wrap:anywhere}
+.previewProblem .btn{margin-top:4px;min-height:28px;padding:3px 7px;color:#603800;background:#fff9eb}
+.printPreview iframe{display:block;width:100%;height:min(59vh,690px);min-height:220px;border:1px solid var(--line);border-radius:8px;background:var(--subtle)}
+.printLinks{margin-bottom:10px;flex-wrap:wrap}
+.printLinks a{text-decoration:none}
+.printNotice{padding:8px;color:#603800;background:#fff4da;border-radius:6px;margin:0 0 9px;font-size:.84rem}
+.priceHandles{position:absolute;inset:0;pointer-events:none}
+.priceHandle{position:absolute;touch-action:none;pointer-events:auto;cursor:grab;border:1px dashed #5a4af4;background:#6b5df91a;border-radius:4px;padding:0}
+.priceHandle:hover,.priceHandle:active{background:#5746df36;outline:2px solid #fff}
+.priceHandle:active{cursor:grabbing}
+.positionEditor>.btn{margin-top:7px}
+.batchScale{margin-top:14px;padding-top:12px;border-top:1px solid var(--line)}
+.batchScaleGrid{display:flex;flex-wrap:wrap;gap:9px;margin-top:8px}
+.batchScaleControl{display:flex;align-items:center;gap:6px;background:var(--subtle);border:1px solid var(--line);border-radius:8px;padding:5px 7px;font-size:.85rem}
+.batchScaleControl span{font-weight:650;margin-right:2px}
+.batchScaleControl .btn{min-height:28px;padding:3px 6px}
 .leafletPreviews{margin-bottom:12px}
 .leafletPreviews summary{font-weight:710;margin-bottom:10px}
 .loadMore{display:flex;align-items:center;justify-content:center;gap:10px;margin-top:12px;color:var(--muted)}

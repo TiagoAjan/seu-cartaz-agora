@@ -41,9 +41,11 @@ export function PageHeading({title,subtitle,children}) {
 export function Empty({icon:Icon=FilePlus2,title,detail,children}) {
   return <div className="empty"><div className="emptyIcon"><Icon size={25}/></div><h3>{title}</h3>{detail&&<p>{detail}</p>}{children}</div>;
 }
-export function CanvasPreview({poster,config,posters,example=false}) {
+export function CanvasPreview({poster,config,posters,example=false,onPriceRegions,children}) {
   const ref=useRef(null);
   const [warning,setWarning]=useState('');
+  const [failed,setFailed]=useState('');
+  const [attempt,retry]=useState(0);
   const [visible,setVisible]=useState(false);
   useEffect(()=>{
     const node=ref.current;
@@ -54,21 +56,32 @@ export function CanvasPreview({poster,config,posters,example=false}) {
   useEffect(()=>{
     if(!visible)return;
     let active=true;
+    setFailed('');
     const canvas=document.createElement('canvas');
     const ratio=config.width/config.height;
     const width=Math.min(820,750*ratio);
     const height=width/ratio;
-    (posters?drawSheet(canvas,posters,config,width,height):draw(canvas,poster,config,width,height)).then(result=>{
+    const regions=onPriceRegions?{}:null;
+    (posters?drawSheet(canvas,posters,config,width,height,{preview:true}):draw(canvas,poster,config,width,height,null,{preview:true,regions})).then(result=>{
       if(!active)return;
       const dest=ref.current;
       dest.width=canvas.width;
       dest.height=canvas.height;
       dest.getContext('2d').drawImage(canvas,0,0);
-      setWarning(result.length?'Ajuste necessário em: '+result.join(', '):'');
-    }).catch(error=>{if(active)setWarning(error.message);});
+      setWarning(result.join(' '));
+      onPriceRegions?.(regions);
+    }).catch(error=>{if(active){setWarning('');setFailed(error.message||'Erro ao carregar a arte.');onPriceRegions?.({});}});
     return ()=>{active=false;};
-  },[poster,config,posters,visible]);
-  return <div className={'canvasPreview'+(example?' example':'')} style={{aspectRatio:config.width+'/'+config.height}}><canvas ref={ref} role="img" aria-label={poster?.product?.name || 'Página de encarte'}/>{warning&&<span className="overflowWarning" title={warning} aria-label={warning}><CircleAlert size={16}/></span>}</div>;
+  },[poster,config,posters,visible,attempt,onPriceRegions]);
+  const assetWarning=warning.includes('Arte de fundo · ');
+  return <div className={'canvasPreview'+(example?' example':'')} style={{aspectRatio:config.width+'/'+config.height}}>
+    <canvas ref={ref} role="img" aria-label={poster?.product?.name || 'Página de encarte'}/>
+    {children}
+    {failed||assetWarning?<div className="previewProblem" role="status">
+      <CircleAlert size={17}/><div><strong>{failed?'Erro ao carregar a prévia':'Arte de fundo indisponível'}</strong>
+      <p>{failed||warning}</p>{!example&&<Button onClick={()=>retry(attempt+1)}>Tentar novamente</Button>}</div>
+    </div>:warning&&<span className="overflowWarning" title={warning} aria-label={warning}><CircleAlert size={16}/></span>}
+  </div>;
 }
 const exampleConfig = {width:430,height:488,dynamic:'Preço único',end:'',start:'',storeName:'',kind:'poster'};
 export function TemplateCard({template,onUse,onEdit,index=0}) {
