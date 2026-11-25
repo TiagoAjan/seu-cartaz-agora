@@ -5,35 +5,95 @@ import {Button, CanvasPreview, Check, Empty, Field, IconButton, ImageInput, Moda
 import {storeOptions} from './catalog';
 import {builtins,campaignStatus,dateLabel,event,fonts,id,now,posterFromProduct,sample,splashes} from '@/lib/model.mjs';
 import {download} from '@/lib/graphic.mjs';
+import {a4Artwork,artworkInfo,artworkStart} from '@/lib/template-art.mjs';
+import {readArtwork} from '@/lib/artwork-upload.mjs';
 
 const cfg={width:210,height:255,unit:'mm',dynamic:'Preço único'};
 export function Templates({data,commit,notify,useTemplate,requireAccount}) {
   const [edit,setEdit]=useState(null);
+  const [importing,setImporting]=useState(false);
+  const [error,setError]=useState('');
+  const [reading,setReading]=useState(false);
+  const [saving,setSaving]=useState(false);
+  const artworkMode=importing||!!edit?.artwork;
+  const format=a4Artwork(!!edit?.artworkLandscape);
+  const imageInfo=edit?.artworkWidth?artworkInfo(edit.artworkWidth,edit.artworkHeight,format.landscape):null;
+  const close=()=>{if(!reading&&!saving)setEdit(null);};
+  function open(template,asArtwork=false){
+    if(!requireAccount())return;
+    setError('');setImporting(asArtwork);setEdit(template);
+  }
+  async function upload(file){
+    if(!file)return;
+    setReading(true);setError('');
+    try {
+      const image=await readArtwork(file);
+      setEdit(current=>({...current,artwork:image.src,artworkWidth:image.width,artworkHeight:image.height,
+        artworkLandscape:image.width>image.height,optimizedArtwork:image.optimized,
+        name:current.name||file.name.replace(/\.[^.]+$/,'').slice(0,100)}));
+    } catch(error){setError(error.message);}
+    finally{setReading(false);}
+  }
   async function save(e) {
     e.preventDefault();
+    setError('');
+    if(artworkMode&&!edit.artwork){setError('Escolha a imagem do cartaz para salvar.');return;}
+    if(!edit.name.trim()){setError('Informe um nome para o modelo.');return;}
     const earlier=data.templates.find(t=>t.id===edit.id);
-    const next={...edit,id:earlier?.id||id(),version:(earlier?.version||0)+1};
+    const next={...edit,name:edit.name.trim(),id:earlier?.id||id(),version:(earlier?.version||0)+1};
     const list=earlier?data.templates.map(t=>t.id===earlier.id?next:t):[next,...data.templates];
-    if(await commit({...data,templates:list,events:[event('Modelo salvo',next.name),...data.events]})){setEdit(null);notify('Modelo salvo.');}
+    setSaving(true);
+    try {
+      if(await commit({...data,templates:list,events:[event('Modelo salvo',next.name),...data.events]})){setEdit(null);notify('Modelo salvo.');}
+      else setError('Não foi possível salvar o modelo. Confira sua sessão e tente novamente.');
+    } finally {setSaving(false);}
   }
   async function remove(){
     if(!window.confirm('Excluir este modelo personalizado? Os lotes existentes serão preservados.'))return;
     if(await commit({...data,templates:data.templates.filter(t=>t.id!==edit.id)})){setEdit(null);notify('Modelo excluído.');}
   }
-  return <><PageHeading title="Editor de templates" subtitle="Explore modelos e personalize a identidade das suas ofertas."><Button icon={Plus} variant="primary" onClick={()=>requireAccount()&&setEdit({...builtins[0],id:'',name:'Novo modelo'})}>Novo modelo</Button></PageHeading>
-    <div className="templateGrid">{[...data.templates,...builtins].map((t,index)=><TemplateCard key={t.id} template={t} index={index} onUse={useTemplate} onEdit={t=>requireAccount()&&setEdit({...t,name:builtins.some(b=>b.id===t.id)?t.name+' · Cópia':t.name})}/>)}</div>
-    {edit&&<Modal wide title="Personalizar modelo" onClose={()=>setEdit(null)}>
-      <form onSubmit={save}><div className="advancedPoster"><CanvasPreview poster={posterFromProduct(sample,edit,{shape:splashes[0],color:'#ffad24',splashPrice:false})} config={cfg}/><div className="formGrid two">
+  return <><PageHeading title="Editor de templates" subtitle="Explore modelos e personalize a identidade das suas ofertas."><Button icon={Images} onClick={()=>open({...builtins[0],id:'',name:'',bg:'#ffffff',ink:'#211b29',
+      headline:'',descFont:'Poppins',artworkLandscape:false,contentStart:.27},true)}>Importar arte</Button>
+      <Button icon={Plus} variant="primary" onClick={()=>open({...builtins[0],id:'',name:'Novo modelo'})}>Novo modelo</Button></PageHeading>
+    <div className="templateGrid">{[...data.templates,...builtins].map((t,index)=><TemplateCard key={t.id} template={t} index={index} onUse={useTemplate} onEdit={t=>open({...t,name:builtins.some(b=>b.id===t.id)?t.name+' · Cópia':t.name})}/>)}</div>
+    {edit&&<Modal wide title={importing?'Importar arte de cartaz':'Personalizar modelo'} onClose={close}>
+      <form onSubmit={save}>
+        {error&&<p className="inlineError" role="alert">{error}</p>}
+        {artworkMode&&<div className="artworkInfo">
+          <div>
+            <strong>Arte de página inteira em A4</strong>
+            <p>{format.width} × {format.height} mm · {format.pixels.join(' × ')} px a 300 DPI</p>
+            <p>Envie PNG, JPG ou JPEG com espaço livre para a descrição e o preço. Escolha a orientação da folha abaixo.</p>
+          </div>
+          <label className="btn upload"><Images size={17}/>{reading?'Lendo imagem…':edit.artwork?'Trocar imagem':'Escolher imagem'}
+            <input type="file" aria-label="Arquivo de arte do cartaz" accept=".png,.jpg,.jpeg,image/png,image/jpeg" disabled={reading||saving}
+              onChange={e=>{const file=e.target.files?.[0];e.target.value='';upload(file);}}/>
+          </label>
+          {imageInfo&&<p className="artworkDetail">Imagem enviada: {edit.artworkWidth} × {edit.artworkHeight} px · {imageInfo.resolution} DPI em A4.
+            {imageInfo.ratioMismatch?' A proporção difere do A4. A imagem será centralizada com margens.':''}
+            {imageInfo.resolution<285?' Use uma arte maior se precisar de mais nitidez na impressão.':''}
+            {edit.optimizedArtwork?' Arquivo otimizado para upload, com a mesma largura e altura.':''}</p>}
+        </div>}
+        <div className="advancedPoster">
+          {artworkMode&&!edit.artwork?<Empty icon={Images} title="Prévia da arte" detail="Escolha a imagem para ver a posição do produto e do preço."/>:
+            <CanvasPreview poster={posterFromProduct(sample,edit,{shape:splashes[0],color:'#ffad24',splashPrice:false})}
+              config={artworkMode||edit.theme?{...cfg,...format}:cfg}/>}
+          <div className="formGrid two">
         <Field label="Nome do modelo"><input value={edit.name} required maxLength={100} onChange={e=>setEdit({...edit,name:e.target.value})}/></Field>
-        <Field label="Título do cartaz"><input value={edit.headline} required maxLength={75} onChange={e=>setEdit({...edit,headline:e.target.value})}/></Field>
-        {Object.entries({bg:'Cor de fundo',accent:'Cor do cabeçalho',ink:'Cor do texto'}).map(([k,label])=><Field key={k} label={label}><input type="color" value={edit[k]} onChange={e=>setEdit({...edit,[k]:e.target.value})}/></Field>)}
+        {artworkMode?<>
+          <Field label="Orientação da arte"><Select options={['Retrato','Paisagem']} value={format.landscape?'Paisagem':'Retrato'} onChange={v=>setEdit({...edit,artworkLandscape:v==='Paisagem'})}/></Field>
+          <Field label="Altura reservada ao cabeçalho (%)"><input type="number" min="0" max="50" value={Math.round(artworkStart(edit)*100)}
+            onChange={e=>setEdit({...edit,contentStart:Math.max(0,Math.min(50,Number(e.target.value)))/100})}/></Field>
+          <Check checked={edit.showArtworkFooter!==false} onChange={e=>setEdit({...edit,showArtworkFooter:e.target.checked})}>Mostrar validade e loja</Check>
+        </>:<Field label="Título do cartaz"><input value={edit.headline} required maxLength={75} onChange={e=>setEdit({...edit,headline:e.target.value})}/></Field>}
+        {Object.entries(artworkMode?{bg:'Cor das margens',ink:'Cor do texto'}:{bg:'Cor de fundo',accent:'Cor do cabeçalho',ink:'Cor do texto'}).map(([k,label])=><Field key={k} label={label}><input type="color" value={edit[k]} onChange={e=>setEdit({...edit,[k]:e.target.value})}/></Field>)}
         <Field label="Fonte da descrição"><Select options={fonts.map(f=>f.name)} value={edit.descFont} onChange={descFont=>setEdit({...edit,descFont})}/></Field>
         <Field label="Fonte do preço"><Select options={fonts.map(f=>f.name)} value={edit.priceFont} onChange={priceFont=>setEdit({...edit,priceFont})}/></Field>
         <Check checked={!!edit.photo} onChange={e=>setEdit({...edit,photo:e.target.checked})}>Incluir imagem do produto</Check>
-        <Check checked={!!edit.paper} onChange={e=>setEdit({...edit,paper:e.target.checked})}>Cabeçalho econômico</Check>
+        {!artworkMode&&!edit.theme&&<Check checked={!!edit.paper} onChange={e=>setEdit({...edit,paper:e.target.checked})}>Cabeçalho econômico</Check>}
       </div></div><div className="modalActions">
         {data.templates.some(t=>t.id===edit.id)&&<><Button icon={Trash2} onClick={remove}>Excluir</Button><Button icon={Copy} onClick={()=>setEdit({...edit,id:'',name:edit.name+' · Cópia'})}>Duplicar</Button></>}
-        <Button variant="primary" type="submit">Salvar modelo</Button>
+        <Button variant="primary" type="submit" disabled={reading||saving||(artworkMode&&!edit.artwork)}>{saving?'Salvando…':'Salvar modelo'}</Button>
       </div></form>
     </Modal>}
   </>;

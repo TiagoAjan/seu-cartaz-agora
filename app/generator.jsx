@@ -3,14 +3,15 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowDownToLine, CheckCircle2, Copy, FileSpreadsheet, Files, Grid2X2, List, Pencil, Plus, Printer, RotateCcw, Save, Sparkles, Trash2, X } from 'lucide-react';
 import { Button, CanvasPreview, Check, Empty, Field, IconButton, Modal, PageHeading, Select } from './ui';
 import { ProductPicker, storeOptions } from './catalog';
-import { builtins, dimensions, dynamics, effectiveStyle, event, fonts, formats, id, now, parseDate, patchPoster, posterFromProduct, primaryPrice, sizeLabels, sizes, splashes, visibleOffer } from '@/lib/model.mjs';
+import { builtins, dimensions, dynamics, effectiveStyle, event, fonts, formats, id, now, parseDate, patchPoster, posterFromProduct, pricePieces, primaryPrice, resizePrice, sizeLabels, sizes, splashes, visibleOffer } from '@/lib/model.mjs';
 import { download, nextFrame, renderExports, splitPages } from '@/lib/graphic.mjs';
+import {templateFormat} from '@/lib/template-art.mjs';
 import { composePrint, defaultPrint, printGeometry } from '@/lib/printing.mjs';
 
 export const defaultConfig = (kind,store='') => ({kind,store,dynamic:'Preço único',template:builtins[0].id,format:'A4',landscape:false,
   width:210,height:297,unit:'mm',name:'',start:'',end:'',descFont:'',priceFont:'',splashPrice:false,splashDesc:false,shape:splashes[0],color:'#ffad24',perPage:6});
 export function Generator({kind,data,commit,requireAccount,notify,go,selection,selectionBatch,initialTemplate,onGenerate}) {
-  const [cfg,setCfg]=useState(()=>({...defaultConfig(kind),template:initialTemplate||builtins[0].id}));
+  const [requested,setCfg]=useState(()=>({...defaultConfig(kind),template:initialTemplate||builtins[0].id}));
   const [selected,setSelected]=useState(new Set(selection));
   const [importId,setImportId]=useState(selectionBatch||'');
   const [error,setError]=useState('');
@@ -18,7 +19,8 @@ export function Generator({kind,data,commit,requireAccount,notify,go,selection,s
   const token=useRef(null);
   const templates=[...builtins,...data.templates];
   const patch = values=>setCfg(old=>({...old,...values}));
-  const template=templates.find(t=>t.id===cfg.template)||builtins[0];
+  const template=templates.find(t=>t.id===requested.template)||builtins[0];
+  const cfg=templateFormat(requested,template);
   useEffect(()=>()=>{if(token.current)token.current.cancelled=true;},[]);
   function chooseImport(value) {
     setImportId(value);
@@ -68,8 +70,9 @@ export function Generator({kind,data,commit,requireAccount,notify,go,selection,s
       <Field label="Loja"><Select options={storeOptions(data)} value={cfg.store} onChange={store=>patch({store})} placeholder="Todas as lojas"/></Field>
       <Field label="Modelo"><Select options={templates.map(t=>({value:t.id,label:t.name}))} value={cfg.template} onChange={template=>patch({template})}/></Field>
       <Field label="Dinâmica promocional"><Select options={dynamics} value={cfg.dynamic} onChange={dynamic=>patch({dynamic})}/></Field>
-      <Field label="Formato"><Select options={[...Object.keys(formats),'Personalizado']} value={cfg.format} onChange={format=>patch({format})}/></Field>
-      <Field label="Orientação"><Select options={['Padrão do formato','Invertida']} value={cfg.landscape?'Invertida':'Padrão do formato'} onChange={value=>patch({landscape:value==='Invertida'})}/></Field>
+      <Field label="Formato"><Select options={[...Object.keys(formats),'Personalizado']} value={cfg.format} disabled={!!template.artwork} onChange={format=>patch({format})}/></Field>
+      <Field label="Orientação"><Select options={template.artwork?['Retrato','Paisagem']:['Padrão do formato','Invertida']} disabled={!!template.artwork}
+        value={template.artwork?(cfg.landscape?'Paisagem':'Retrato'):(cfg.landscape?'Invertida':'Padrão do formato')} onChange={value=>patch({landscape:value==='Invertida'})}/></Field>
       {cfg.format==='Personalizado'&&<>
         <Field label="Largura"><input type="number" min="1" value={cfg.width} onChange={e=>patch({width:e.target.value})}/></Field>
         <Field label="Altura"><input type="number" min="1" value={cfg.height} onChange={e=>patch({height:e.target.value})}/></Field>
@@ -82,6 +85,7 @@ export function Generator({kind,data,commit,requireAccount,notify,go,selection,s
       <Field label="Fonte do preço"><Select options={fonts.map(f=>f.name)} value={cfg.priceFont} placeholder="Fonte do modelo" onChange={priceFont=>patch({priceFont})}/></Field>
       <Field label="Modelo de splash"><Select options={splashes} value={cfg.shape} onChange={shape=>patch({shape})}/></Field>
     </div>
+    {template.artwork&&<p className="artworkHint">Este modelo mantém o A4 na orientação definida em Templates. A imagem inteira aparece na exportação.</p>}
     <div className="groupChecks inlineChecks"><Check checked={cfg.splashPrice} onChange={e=>patch({splashPrice:e.target.checked})}>Splash atrás do preço</Check><Check checked={cfg.splashDesc} onChange={e=>patch({splashDesc:e.target.checked})}>Splash atrás da descrição</Check><input type="color" aria-label="Cor do splash" value={cfg.color} onChange={e=>patch({color:e.target.value})}/></div>
   </section>
   <section className="panel tablePanel module-section"><div className="section-heading padded"><div><h2>Selecionar produtos</h2><p>Selecione produtos do catálogo ou filtre por uma importação.</p></div>{!data.products.length&&<Button icon={Plus} onClick={()=>go('products')}>Abrir catálogo</Button>}</div>
@@ -114,7 +118,8 @@ function Stepper({label,value,onChange,onReset}) {
     <button type="button" className="stepReset" title={'Restaurar '+label} aria-label={'Restaurar '+label} onClick={onReset}><RotateCcw size={13}/></button>
   </div></div>;
 }
-const basic=['description','price','cents','currency','unit'];
+const basic=['description','price','unit'];
+const advancedSizes=Object.keys(sizes).filter(key=>key==='price'||!pricePieces.includes(key));
 const fontOptions=fonts.map(f=>f.name);
 export function Gallery({batch,data,commit,notify,onBatch,dirty,storeDraft,go}) {
   const [selected,setSelected]=useState(new Set());
@@ -153,7 +158,7 @@ export function Gallery({batch,data,commit,notify,onBatch,dirty,storeDraft,go}) 
     change(items=>items.map(p=>{
       if(p.id!==item.id)return p;
       const custom={...p.overrides.sizes};
-      delete custom[key];
+      for(const part of key==='price'?pricePieces:[key])delete custom[part];
       return {...p,overrides:{...p.overrides,sizes:custom}};
     }));
   }
@@ -204,7 +209,13 @@ export function Gallery({batch,data,commit,notify,onBatch,dirty,storeDraft,go}) 
     finally{setWorking(null);cancel.current=null;}
   }
   const openExport=(chosen,print=false)=>{setMode('PDF');if(print)setPrintOptions(defaultPrint());setExporter({items:chosen,print,label:chosen.length+' produto(s)'});};
-  const editSize=(item,key,value)=>individual(item,{sizes:{[key]:Math.max(8,Math.min(300,value))}});
+  function editSize(item,key,value) {
+    if(!Number.isFinite(value))return;
+    if(key==='price'){
+      const current=batchRef.current.items.find(p=>p.id===item.id);
+      individual(item,{sizes:resizePrice(effectiveStyle(current).sizes,value)});
+    } else individual(item,{sizes:{[key]:Math.max(8,Math.min(300,value))}});
+  }
   return <><PageHeading title={batch.name} subtitle={items.length+' '+(items.length===1?'oferta':'ofertas')+' · '+config.format+(dirty?' · Alterações pendentes':' · Lote salvo')}>
     <Button icon={Save} disabled={!dirty} onClick={async()=>{if(await save())notify('Ajustes do lote salvos.');}}>Salvar ajustes</Button>
     <Button icon={Printer} onClick={()=>openExport(selectedItems.length?selectedItems:items,true)}>Imprimir</Button>
@@ -247,7 +258,8 @@ export function Gallery({batch,data,commit,notify,onBatch,dirty,storeDraft,go}) 
   {current&&<Modal wide title="Ajustes do cartaz" onClose={()=>setEditing('')}>
     <div className="advancedPoster"><CanvasPreview poster={current} config={config}/><div>
       <div className="formGrid two"><Field label="Fonte da descrição"><Select value={effectiveStyle(current).descFont} onChange={descFont=>individual(current,{descFont})} options={fontOptions}/></Field><Field label="Fonte do preço"><Select value={effectiveStyle(current).priceFont} onChange={priceFont=>individual(current,{priceFont})} options={fontOptions}/></Field></div>
-      <div className="typeControls">{Object.keys(sizes).map(key=><Stepper key={key} label={sizeLabels[key]} value={effectiveStyle(current).sizes[key]} onChange={value=>editSize(current,key,value)} onReset={()=>resetSize(current,key)}/>)}</div>
+      <p className="artworkHint">Preço completo ajusta R$, valor, vírgula e centavos na mesma proporção.</p>
+      <div className="typeControls">{advancedSizes.map(key=><Stepper key={key} label={sizeLabels[key]} value={effectiveStyle(current).sizes[key]} onChange={value=>editSize(current,key,value)} onReset={()=>resetSize(current,key)}/>)}</div>
       <div className="formGrid two"><Field label="Modelo de splash"><Select value={effectiveStyle(current).shape} onChange={shape=>individual(current,{shape})} options={splashes}/></Field>
       <Field label="Cor do splash"><input type="color" value={effectiveStyle(current).color} onChange={e=>individual(current,{color:e.target.value})}/></Field>
       {[['scale','Escala',.25,2,.05],['opacity','Opacidade',0,1,.05],['x','Posição horizontal',-300,300,1],['y','Posição vertical',-300,300,1],['rotation','Rotação',-180,180,1]].map(([key,label,min,max,step])=><Field key={key} label={label}><input type="range" min={min} max={max} step={step} value={effectiveStyle(current)[key]} onChange={e=>individual(current,{[key]:Number(e.target.value)})}/></Field>)}</div>

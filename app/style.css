@@ -1,3 +1,5 @@
+@font-face{font-family:Poppins;src:url('/fonts/poppins.ttf') format('truetype');font-display:swap}
+@font-face{font-family:Montserrat;src:url('/fonts/montserrat.ttf') format('truetype');font-display:swap}
 @font-face{font-family:Anton;src:url('/fonts/anton.ttf') format('truetype');font-display:swap}
 @font-face{font-family:Bangers;src:url('/fonts/bangers.ttf') format('truetype');font-display:swap}
 @font-face{font-family:Knewave;src:url('/fonts/knewave.ttf') format('truetype');font-display:swap}
@@ -244,6 +246,9 @@ td small{display:block;color:var(--muted)}
 .cardBottom .iconBtn{width:27px;height:29px}
 .advancedPoster{display:grid;grid-template-columns:minmax(130px,280px) minmax(0,1fr);align-items:start;gap:14px}
 .advancedPoster .canvasPreview{border-radius:7px}
+.artworkInfo{display:flex;align-items:flex-start;justify-content:space-between;gap:8px 12px;flex-wrap:wrap;padding:12px;background:var(--subtle);border:1px solid var(--line);border-radius:9px;margin-bottom:13px;font-size:.88rem}
+.artworkInfo p,.artworkHint{color:var(--muted);font-size:.84rem;margin-top:5px}
+.artworkInfo p.artworkDetail{flex-basis:100%}
 .leafletPreviews{margin-bottom:12px}
 .leafletPreviews summary{font-weight:710;margin-bottom:10px}
 .loadMore{display:flex;align-items:center;justify-content:center;gap:10px;margin-top:12px;color:var(--muted)}

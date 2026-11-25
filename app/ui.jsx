@@ -2,6 +2,7 @@
 import { cloneElement, useEffect, useId, useRef, useState } from 'react';
 import { ArrowDownToLine, ChevronDown, CircleAlert, FilePlus2, ImageOff, X } from 'lucide-react';
 import { draw, drawSheet } from '@/lib/graphic.mjs';
+import {a4Artwork} from '@/lib/template-art.mjs';
 import { sample, posterFromProduct } from '@/lib/model.mjs';
 
 export function Button({icon:Icon,children,variant='',className='',...props}) {
@@ -73,10 +74,12 @@ const exampleConfig = {width:430,height:488,dynamic:'Preço único',end:'',start
 export function TemplateCard({template,onUse,onEdit,index=0}) {
   const products=[sample,{name:'Café Tradicional',commercial:'CAFÉ TRADICIONAL',promo:1490,weight:'500 g',unit:'UN'},{name:'Azeite Extra Virgem',commercial:'AZEITE EXTRA VIRGEM',promo:2999,weight:'500 ml',unit:'UN'},{name:'Maçã Fuji',commercial:'MAÇÃ FUJI',promo:699,unit:'KG'}];
   const [poster]=useState(()=>posterFromProduct(products[index%products.length],template,{shape:'Explosão clássica',color:'#ffad20',splashPrice:index===0}));
-  const current={...poster,template};
+  const current={...poster,template,style:{...poster.style,descFont:template.descFont,priceFont:template.priceFont,
+    splashPrice:index===0&&!template.artwork&&!template.theme}};
+  const config=template.artwork||template.theme?{...exampleConfig,...a4Artwork(template.artworkLandscape)}:exampleConfig;
   return <article className="templateCard">
-    <button type="button" className={'templateArt art'+index%4} onClick={()=>onUse(template)} aria-label={'Usar '+template.name}><CanvasPreview poster={current} config={exampleConfig} example/></button>
-    <div className="templateMeta"><div><strong>{template.name}</strong><small>{template.paper?'Econômico · Impressão':'Cartaz promocional'}</small></div>{onEdit?<Button onClick={()=>onEdit(template)}>Editar</Button>:<IconButton icon={FilePlus2} label={'Usar '+template.name} onClick={()=>onUse(template)}/>}</div>
+    <button type="button" className={'templateArt art'+index%4} onClick={()=>onUse(template)} aria-label={'Usar '+template.name}><CanvasPreview poster={current} config={config} example/></button>
+    <div className="templateMeta"><div><strong>{template.name}</strong><small>{template.artwork?'Arte importada · A4 '+(template.artworkLandscape?'paisagem':'retrato'):template.theme?'Modelo temático':template.paper?'Econômico · Impressão':'Cartaz promocional'}</small></div>{onEdit?<Button onClick={()=>onEdit(template)}>Editar</Button>:<IconButton icon={FilePlus2} label={'Usar '+template.name} onClick={()=>onUse(template)}/>}</div>
   </article>;
 }
 export function ImageInput({onLoad,label='Selecionar imagem',multiple=false}) {
