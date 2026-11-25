@@ -3,7 +3,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowDownToLine, CheckCircle2, Copy, FileSpreadsheet, Files, Grid2X2, List, Pencil, Plus, Printer, RotateCcw, Save, Sparkles, Trash2, X } from 'lucide-react';
 import { Button, CanvasPreview, Check, Empty, Field, IconButton, Modal, PageHeading, Select } from './ui';
 import { ProductPicker, storeOptions } from './catalog';
-import { builtins, dimensions, dynamics, effectiveStyle, event, fonts, formats, id, now, parseDate, patchPoster, posterFromProduct, brushSplash, maxPriceSize, pricePieces, primaryPrice, resizePrice, scalePoster, sizeLabels, sizes, splashes, visibleOffer } from '@/lib/model.mjs';
+import { builtins, dimensions, dynamics, effectiveStyle, event, fonts, formats, id, now, parseDate, patchPoster, posterFromProduct, brushSplash, maxPriceSize, pricePieces, primaryPrice, resizePrice, scalePoster, sizeLabels, sizes, splashes, visibleOffer, quantityPromotion, comboPromotion, promotionalProducts } from '@/lib/model.mjs';
 import { download, nextFrame, renderExports, splitPages } from '@/lib/graphic.mjs';
 import {templateFormat} from '@/lib/template-art.mjs';
 import { composePrint, defaultPrint, printGeometry } from '@/lib/printing.mjs';
@@ -13,6 +13,8 @@ export const defaultConfig = (kind,store='') => ({kind,store,dynamic:'Preço ún
 export function Generator({kind,data,commit,requireAccount,notify,go,selection,selectionBatch,initialTemplate,onGenerate}) {
   const [requested,setCfg]=useState(()=>({...defaultConfig(kind),template:initialTemplate||builtins[0].id}));
   const [selected,setSelected]=useState(new Set(selection));
+  const [promo,setPromo]=useState({payment:'units',buy:'3',pay:'2',total:'',name:''});
+  const [comboQuantities,setComboQuantities]=useState({});
   const [importId,setImportId]=useState(selectionBatch||'');
   const [error,setError]=useState('');
   const [job,setJob]=useState(null);
@@ -21,6 +23,10 @@ export function Generator({kind,data,commit,requireAccount,notify,go,selection,s
   const patch = values=>setCfg(old=>({...old,...values}));
   const template=templates.find(t=>t.id===requested.template)||builtins[0];
   const cfg=templateFormat(requested,template);
+  const quantityDeal=cfg.dynamic===quantityPromotion;
+  const comboDeal=cfg.dynamic===comboPromotion;
+  const selectedProducts=data.products.filter(product=>selected.has(product.id));
+  const editPromo=(key,value)=>setPromo(old=>({...old,[key]:value}));
   useEffect(()=>()=>{if(token.current)token.current.cancelled=true;},[]);
   function chooseImport(value) {
     setImportId(value);
@@ -29,33 +35,36 @@ export function Generator({kind,data,commit,requireAccount,notify,go,selection,s
   async function generate() {
     if(!requireAccount())return;
     setError('');
-    const products=data.products.filter(p=>selected.has(p.id));
+    const products=selectedProducts;
     if(!products.length){setError('Selecione pelo menos um produto.');return;}
-    let config;
+    let config,snapshot;
     try {
       config={...cfg,...dimensions(cfg),storeName:data.stores.find(s=>s.id===cfg.store)?.name||data.company?.name||'',
         start:parseDate(cfg.start),end:parseDate(cfg.end)};
       if(config.start && config.end && config.start>config.end)throw Error('Validade inicial posterior à final.');
-      if(kind==='leaflet'&&(!Number.isInteger(cfg.perPage)||cfg.perPage<1||cfg.perPage>30))throw Error('Informe de 1 a 30 produtos por página.');
+      if(kind==='leaflet'&&comboDeal)config.perPage=1;
+      if(kind==='leaflet'&&(!Number.isInteger(config.perPage)||config.perPage<1||config.perPage>30))throw Error('Informe de 1 a 30 produtos por página.');
+      const productOffers=products.map(p=>({...p,...visibleOffer(data,p.id,cfg.store),id:p.id}));
+      snapshot=promotionalProducts(productOffers,cfg.dynamic,promo,comboQuantities);
+      if(comboDeal&&!config.name.trim())config.name=snapshot[0].name;
     } catch(e){setError(e.message);return;}
-    const snapshot=products.map(p=>({...p,...visibleOffer(data,p.id,cfg.store),id:p.id}));
     const missing=snapshot.filter(p=>primaryPrice(p,cfg.dynamic)==null);
     if(missing.length&&!window.confirm(missing.length+' produto(s) não têm preço para a dinâmica selecionada. Gerar com a indicação SEM PREÇO?'))return;
     const signal={cancelled:false};
     token.current=signal;
-    setJob({done:0,total:products.length});
+    setJob({done:0,total:snapshot.length});
     const items=[];
     try {
       for(let i=0;i<snapshot.length;i+=20){
         if(signal.cancelled){notify('Geração cancelada.');return;}
-        items.push(...snapshot.slice(i,i+20).map(p=>posterFromProduct(p,template,config)));
-        setJob({done:items.length,total:products.length});
+        items.push(...snapshot.slice(i,i+20).map(p=>posterFromProduct(p,comboDeal?{...template,photo:false}:template,config)));
+        setJob({done:items.length,total:snapshot.length});
         await nextFrame();
       }
       if(signal.cancelled)return;
-      const batch={id:id(),kind,name:cfg.name.trim()||(kind==='leaflet'?'Encarte promocional':'Lote de cartazes'),created:now(),config,items};
+      const batch={id:id(),kind,name:cfg.name.trim()||(comboDeal?snapshot[0].name:kind==='leaflet'?'Encarte promocional':'Lote de cartazes'),created:now(),config,items};
       const status=kind==='leaflet'?'Encarte gerado':'Cartazes gerados';
-      if(await commit({...data,batches:[batch,...data.batches],events:[event(status,batch.name+' · '+items.length+' produtos',cfg.store),...data.events]})){
+      if(await commit({...data,batches:[batch,...data.batches],events:[event(status,batch.name+' · '+(comboDeal?'1 combo':items.length+' produtos'),cfg.store),...data.events]})){
         onGenerate(batch);
         notify(status+'.');
       }
@@ -80,21 +89,45 @@ export function Generator({kind,data,commit,requireAccount,notify,go,selection,s
       </>}
       <Field label="Validade inicial"><input type="date" value={cfg.start} onChange={e=>patch({start:e.target.value})}/></Field>
       <Field label="Validade final"><input type="date" value={cfg.end} onChange={e=>patch({end:e.target.value})}/></Field>
-      {kind==='leaflet'&&<Field label="Produtos por página"><input type="number" min="1" max="30" value={cfg.perPage} onChange={e=>patch({perPage:Number(e.target.value)})}/></Field>}
+      {kind==='leaflet'&&!comboDeal&&<Field label="Produtos por página"><input type="number" min="1" max="30" value={cfg.perPage} onChange={e=>patch({perPage:Number(e.target.value)})}/></Field>}
       <Field label="Fonte da descrição"><Select options={fonts.map(f=>f.name)} value={cfg.descFont} placeholder="Fonte do modelo" onChange={descFont=>patch({descFont})}/></Field>
       <Field label="Fonte do preço"><Select options={fonts.map(f=>f.name)} value={cfg.priceFont} placeholder="Fonte do modelo" onChange={priceFont=>patch({priceFont})}/></Field>
       <Field label="Modelo de splash"><Select options={splashes} value={cfg.shape} onChange={shape=>patch({shape})}/></Field>
     </div>
+    {(quantityDeal||comboDeal)&&<div className="artworkInfo promotionOptions">
+      <div><strong>{comboDeal?'Composição do combo':'Condições da promoção'}</strong>
+        <p>{comboDeal?'Combine produtos do catálogo em uma única oferta com preço total.':
+          'Escolha entre pagar por menos unidades ou informar um valor total para cada produto selecionado.'}</p></div>
+      <div className="formGrid three">
+        {comboDeal?<Field label="Nome do combo"><input maxLength={80} value={promo.name} onChange={e=>editPromo('name',e.target.value)} placeholder="Ex.: Combo café da manhã"/></Field>:<>
+          <Field label="Quantidade para comprar"><input type="number" min="2" max="999" value={promo.buy} onChange={e=>editPromo('buy',e.target.value)}/></Field>
+          <Field label="Forma de pagamento"><Select value={promo.payment} onChange={value=>editPromo('payment',value)}
+            options={[{value:'units',label:'Pagar por menos unidades'},{value:'total',label:'Pagar um valor total em R$'}]}/></Field>
+          {promo.payment==='units'&&<Field label="Quantidade para pagar"><input type="number" min="1" max="999" value={promo.pay} onChange={e=>editPromo('pay',e.target.value)}/></Field>}
+        </>}
+        {(comboDeal||promo.payment==='total')&&<Field label={comboDeal?'Preço total do combo (R$)':'Preço total da promoção (R$)'}>
+          <input inputMode="decimal" value={promo.total} onChange={e=>editPromo('total',e.target.value)} placeholder="Ex.: 19,90"/>
+        </Field>}
+      </div>
+      {quantityDeal&&promo.payment==='units'&&<p className="artworkDetail">Exemplo: leve 3, pague 2. O total usa o preço unitário exibido no catálogo.</p>}
+    </div>}
     {template.artwork&&<p className="artworkHint">Este modelo mantém o A4 na orientação definida em Templates. A imagem inteira aparece na exportação.</p>}
     <div className="groupChecks inlineChecks"><Check checked={cfg.splashPrice} onChange={e=>patch({splashPrice:e.target.checked})}>Splash atrás do preço</Check><Check checked={cfg.splashDesc} onChange={e=>patch({splashDesc:e.target.checked})}>Splash atrás da descrição</Check><input type="color" aria-label="Cor do splash" disabled={cfg.shape===brushSplash} value={cfg.color} onChange={e=>patch({color:e.target.value})}/></div>
   </section>
   <section className="panel tablePanel module-section"><div className="section-heading padded"><div><h2>Selecionar produtos</h2><p>Selecione produtos do catálogo ou filtre por uma importação.</p></div>{!data.products.length&&<Button icon={Plus} onClick={()=>go('products')}>Abrir catálogo</Button>}</div>
     <ProductPicker data={data} selected={selected} setSelected={setSelected} batch={importId} setBatch={chooseImport} store={cfg.store}/>
+    {comboDeal&&selectedProducts.length>0&&<div className="comboItems">
+      <h3>Quantidades do combo</h3>
+      <div className="formGrid three">{selectedProducts.map(product=><Field key={product.id} label={'Quantidade de '+(product.commercial||product.name)}>
+        <input type="number" min="1" max="999" value={comboQuantities[product.id]??'1'}
+          onChange={e=>setComboQuantities(old=>({...old,[product.id]:e.target.value}))}/>
+      </Field>)}</div>
+    </div>}
     <div className="generatorActions">
-      {error&&<div className="inlineError">{error}</div>}
+      {error&&<div className="inlineError" role="alert">{error}</div>}
       {job&&<div className="progress"><progress value={job.done} max={job.total}/><span>{job.done} / {job.total}</span></div>}
       {job&&<Button icon={X} onClick={()=>{token.current.cancelled=true;}}>Cancelar</Button>}
-      <Button icon={Sparkles} variant="primary" disabled={!selected.size||!!job} onClick={generate}>{job?'Gerando prévias…':'Gerar prévias'}{selected.size?' ('+selected.size+')':''}</Button>
+      <Button icon={Sparkles} variant="primary" disabled={!selected.size||!!job} onClick={generate}>{job?'Gerando prévias…':comboDeal?'Gerar combo':'Gerar prévias'}{selected.size?' ('+selected.size+')':''}</Button>
     </div>
   </section></>;
 }
