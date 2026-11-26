@@ -84,15 +84,24 @@ export function CanvasPreview({poster,config,posters,example=false,onPriceRegion
   </div>;
 }
 const exampleConfig = {width:430,height:488,dynamic:'Preço único',end:'',start:'',storeName:'',kind:'poster'};
+const officialSamples=[
+  {name:'Arroz tipo 1',promo:1997,unit:'UN',weight:'5 kg'},
+  {name:'Maçã Gala',promo:699,unit:'KG'},
+  {name:'Contra-filé bovino',promo:4490,unit:'KG'},
+  {name:'Refrigerante',promo:799,unit:'UN',weight:'2 L'},
+  {name:'Pão francês',promo:1290,unit:'KG'},
+  {name:'Combo café da manhã',promo:2490,unit:'COMBO'}
+];
 export function TemplateCard({template,onUse,onEdit,index=0}) {
   const products=[sample,{name:'Café Tradicional',commercial:'CAFÉ TRADICIONAL',promo:1490,weight:'500 g',unit:'UN'},{name:'Azeite Extra Virgem',commercial:'AZEITE EXTRA VIRGEM',promo:2999,weight:'500 ml',unit:'UN'},{name:'Maçã Fuji',commercial:'MAÇÃ FUJI',promo:699,unit:'KG'}];
-  const [poster]=useState(()=>posterFromProduct(products[index%products.length],template,{shape:'Explosão clássica',color:'#ffad20',splashPrice:index===0}));
-  const current={...poster,template,style:{...poster.style,descFont:template.descFont,priceFont:template.priceFont,
+  const [poster]=useState(()=>posterFromProduct(template.official?officialSamples[index%officialSamples.length]:products[index%products.length],template,{shape:'Explosão clássica',color:'#ffad20',splashPrice:index===0}));
+  const previewTemplate=template.official?{...template,artwork:template.previewArtwork}:template;
+  const current={...poster,template:previewTemplate,style:{...poster.style,descFont:template.descFont,priceFont:template.priceFont,
     splashPrice:index===0&&!template.artwork&&!template.theme}};
   const config=template.artwork||template.theme?{...exampleConfig,...a4Artwork(template.artworkLandscape)}:exampleConfig;
   return <article className="templateCard">
     <button type="button" className={'templateArt art'+index%4} onClick={()=>onUse(template)} aria-label={'Usar '+template.name}><CanvasPreview poster={current} config={config} example/></button>
-    <div className="templateMeta"><div><strong>{template.name}</strong><small>{template.artwork?'Arte importada · A4 '+(template.artworkLandscape?'paisagem':'retrato'):template.theme?'Modelo temático':template.paper?'Econômico · Impressão':'Cartaz promocional'}</small></div>{onEdit?<Button onClick={()=>onEdit(template)}>Editar</Button>:<IconButton icon={FilePlus2} label={'Usar '+template.name} onClick={()=>onUse(template)}/>}</div>
+    <div className="templateMeta"><div><strong>{template.name}</strong><small>{template.official?'PNG oficial · A4':template.artwork?'Arte importada · A4 '+(template.artworkLandscape?'paisagem':'retrato'):template.theme?'Modelo temático':template.paper?'Econômico · Impressão':'Cartaz promocional'}</small></div>{onEdit?<Button onClick={()=>onEdit(template)}>{template.official?'Personalizar':'Editar'}</Button>:<IconButton icon={FilePlus2} label={'Usar '+template.name} onClick={()=>onUse(template)}/>}</div>
   </article>;
 }
 export function ImageInput({onLoad,label='Selecionar imagem',multiple=false}) {

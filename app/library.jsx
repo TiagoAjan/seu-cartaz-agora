@@ -5,7 +5,7 @@ import {Button, CanvasPreview, Check, Empty, Field, IconButton, ImageInput, Moda
 import {storeOptions} from './catalog';
 import {builtins,campaignStatus,dateLabel,event,fonts,id,now,posterFromProduct,sample,splashes} from '@/lib/model.mjs';
 import {download} from '@/lib/graphic.mjs';
-import {a4Artwork,artworkInfo,artworkStart} from '@/lib/template-art.mjs';
+import {a4Artwork,artworkInfo,artworkStart,officialTemplates} from '@/lib/template-art.mjs';
 import {readArtwork} from '@/lib/artwork-upload.mjs';
 
 const cfg={width:210,height:255,unit:'mm',dynamic:'Preço único'};
@@ -55,7 +55,16 @@ export function Templates({data,commit,notify,useTemplate,requireAccount}) {
   return <><PageHeading title="Editor de templates" subtitle="Explore modelos e personalize a identidade das suas ofertas."><Button icon={Images} onClick={()=>open({...builtins[0],id:'',name:'',bg:'#ffffff',ink:'#211b29',
       headline:'',descFont:'Poppins',artworkLandscape:false,contentStart:.27},true)}>Importar arte</Button>
       <Button icon={Plus} variant="primary" onClick={()=>open({...builtins[0],id:'',name:'Novo modelo'})}>Novo modelo</Button></PageHeading>
-    <div className="templateGrid">{[...data.templates,...builtins].map((t,index)=><TemplateCard key={t.id} template={t} index={index} onUse={useTemplate} onEdit={t=>open({...t,name:builtins.some(b=>b.id===t.id)?t.name+' · Cópia':t.name})}/>)}</div>
+    <section className="module-section">
+      <div className="section-heading"><div><h2>Coleção 3D do site</h2><p>Modelos oficiais disponíveis para todas as contas. As prévias usam produtos de exemplo.</p></div></div>
+      <div className="templateGrid officialTemplateGrid">{officialTemplates.map((t,index)=><TemplateCard key={t.id} template={t} index={index} onUse={useTemplate}
+        onEdit={t=>open({...t,official:false,name:t.name+' · Cópia'})}/>)}</div>
+    </section>
+    <section className="module-section">
+      <div className="section-heading"><div><h2>Outros modelos</h2></div></div>
+      <div className="templateGrid">{[...data.templates,...builtins.filter(t=>!t.official)].map((t,index)=><TemplateCard key={t.id} template={t} index={index} onUse={useTemplate}
+        onEdit={t=>open({...t,name:builtins.some(b=>b.id===t.id)?t.name+' · Cópia':t.name})}/>)}</div>
+    </section>
     {edit&&<Modal wide title={importing?'Importar arte de cartaz':'Personalizar modelo'} onClose={close}>
       <form onSubmit={save}>
         {error&&<p className="inlineError" role="alert">{error}</p>}
