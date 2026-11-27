@@ -24,21 +24,22 @@ async function request(body){
   return value;
 }
 function Login({onClose,onLogin,cloud}) {
-  const [email,setEmail]=useState('');
+  const [identifier,setIdentifier]=useState('');
   const [password,setPassword]=useState('');
   const [error,setError]=useState('');
   const [busy,setBusy]=useState(false);
   async function submit(e){
     e.preventDefault();setBusy(true);setError('');
-    try {onLogin(await request({action:'login',email,password}));}
+    const identity=cloud ? {identifier} : {email:identifier};
+    try {onLogin(await request({action:'login',...identity,password}));}
     catch(e){setError(e.message);}
     finally{setBusy(false);}
   }
   return <Modal wide title="Entrar no estúdio" onClose={onClose}><div className="loginLayout">
     <div className="loginArt"><Mark/><h2>Crie.<br/>Personalize.<br/>Imprima.</h2><HeroArt/></div>
-    <form onSubmit={submit}><h3>Acesse sua conta</h3><p className="muted">Use o e-mail e a senha do seu espaço de trabalho.</p>
+    <form onSubmit={submit}><h3>Acesse sua conta</h3>
       {error&&<p className="inlineError">{error}</p>}
-      <Field label="E-mail"><input type="email" autoComplete="username" autoFocus required value={email} onChange={e=>setEmail(e.target.value)}/></Field>
+      <Field label={cloud?'E-mail ou telefone':'E-mail'}><input type={cloud?'text':'email'} autoComplete="username" autoCapitalize="none" spellCheck={false} autoFocus required value={identifier} placeholder={cloud?'Ex. (85) 99999-0000':undefined} onChange={e=>setIdentifier(e.target.value)}/></Field>
       <Field label="Senha"><input type="password" autoComplete="current-password" required value={password} onChange={e=>setPassword(e.target.value)}/></Field>
       <Button icon={LogIn} type="submit" variant="primary" disabled={busy}>{busy?'Entrando…':'Entrar'}</Button>
       <details className="details"><summary>Primeiro acesso ou senha esquecida?</summary>{cloud?<p>Solicite a criação da conta ou a troca de senha ao responsável pelo projeto Supabase.</p>:<p>Na pasta do projeto, use <code>npm run admin</code> para criar o espaço ou <code>npm run admin -- --reset</code> para trocar a senha.</p>}</details>
